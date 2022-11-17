@@ -17,5 +17,6 @@
         <jarDirectory url="file://D:/javafx-sdk-19/lib" recursive="false" />
       </library>
     </orderEntry>
+    <orderEntry type="library" name="lib" level="project" />
   </component>
 </module>

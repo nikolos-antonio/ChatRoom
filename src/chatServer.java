@@ -10,125 +10,139 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class chatServer extends Application {
+
+    private ArrayList<HandleSession> connections;
+    private ServerSocket serverSocket;
+    private boolean done;
+    private ExecutorService pool;
     TextArea taLog = new TextArea();
 
-    @Override
-    public void start(Stage primaryStage){
+    public chatServer() {
+        connections = new ArrayList<>();
+        done = false;
+    }
 
+
+    @Override
+    public void start(Stage primaryStage) throws IOException {
 
         Scene scene = new Scene(new ScrollPane(taLog), 450, 200);
-        primaryStage.setTitle("Chat server"); // Set the stage title
+        primaryStage.setTitle("ChatServer Server"); // Set the stage title
         primaryStage.setScene(scene); // Place the scene in the stage
-        primaryStage.show(); // Display the stage
+        primaryStage.show();// Display the stage
 
         new Thread( () -> {
             try {
-                // Create a server socket
-                ServerSocket serverSocket = new ServerSocket(8000);
-                Platform.runLater(() -> taLog.appendText(new Date() +
-                        ": Server started at socket 8000" +"\n"));
-
+                serverSocket = new ServerSocket(8000);
+                pool = Executors.newCachedThreadPool();
+                Platform.runLater(() -> taLog.appendText(new Date() + ": Server started at socket 8000" + "\n"));
                 // Ready to create chat room for the two clients
-                while (true) {
-                    Platform.runLater(() -> taLog.appendText(new Date() +
-                            ": Wait for clients to join session " +  '\n'));
-
-                    // Connect to first client
-                    Socket client1 = serverSocket.accept();
-
-                    Platform.runLater(() -> {
-                        taLog.appendText(new Date() + ": client has joined chat room "
-                                + '\n');
-                        taLog.appendText("client1 IP address" +
-                                client1.getInetAddress().getHostAddress() + '\n');
-                    });
-
-                    // Connect to player 2
-                    Socket client2 = serverSocket.accept();
+                while (!done) {
+                    // Connect to client
+                    Socket client = serverSocket.accept();
+                    HandleSession handle = new HandleSession(client);
+                    connections.add(handle);
+                    pool.execute(handle);
 
                     Platform.runLater(() -> {
-                        taLog.appendText(new Date() +
-                                ": Second client has joined chatroom " +  '\n');
-                        taLog.appendText("client2 IP address" +
-                                client2.getInetAddress().getHostAddress() + '\n');
+                        taLog.appendText(new Date() + ": client has joined chat room " + '\n');
+                        taLog.appendText("client IP address " + client.getInetAddress().getHostAddress() + '\n');
                     });
 
-                    // Launch a new thread for this session of two players
-                    new Thread(new HandleSession(client1, client2)).start();
                 }
-            }
-            catch(IOException ex) {
+            } catch (Exception ex) {
                 ex.printStackTrace();
+                try {
+                    shutdown();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
         }).start();
     }
+
+    public void broadcast(String message)
+            throws IOException {
+        for (HandleSession ch : connections) {
+            if (ch != null) {
+                ch.sendMessage(message);
+            }
+        }
+    }
+
+    public void shutdown() throws IOException {
+        done = true;
+        pool.shutdown();
+        if (serverSocket.isClosed()){
+            serverSocket.close();
+        }
+        for(HandleSession ch: connections) {
+            ch.shutdown();
+        }
+    }
+
     //threadclass for chatroom
-    class HandleSession implements Runnable{
-        private Socket client1;
-        private Socket client2;
+    class HandleSession implements Runnable {
+        private Socket client;
+        private DataInputStream fromClient;
+        private DataOutputStream toClient;
+        private String nickname;
 
-        private DataInputStream fromClient1;
-        private DataOutputStream toClient1;
-        private DataInputStream fromclient2;
-        private DataOutputStream toClient2;
-
-        public HandleSession(Socket client1, Socket client2) {
-            this.client1 = client1;
-            this.client2 = client2;
+        public HandleSession(Socket client) {
+            this.client = client;
         }
         public void run() {
             try {
                 // Create data input and output streams
-                fromClient1 = new DataInputStream(
-                        client1.getInputStream());
-                toClient1 = new DataOutputStream(
-                        client1.getOutputStream());
+                fromClient = new DataInputStream(client.getInputStream());
+                toClient = new DataOutputStream(client.getOutputStream());
+                toClient.writeUTF("Please enter a nickname: ");
+                nickname = fromClient.readUTF().trim();
 
-                fromclient2 = new DataInputStream(
-                        client2.getInputStream());
-                toClient2  = new DataOutputStream(
-                        client2.getOutputStream());
+                System.out.println(nickname + " connected");
+                broadcast(nickname + " joined the chat!\n");
 
-                // Continuously serve the client
-                while (true) {
-                    // Receive Message from the client
-                    String message1 = fromClient1.readUTF().trim();
-                    // Send message client2
-                    toClient2.writeUTF(message1);
-
-
-
-                    //Receive message from client2
-                    String message2 = fromclient2.readUTF().trim();
-                    //send Message to client1
-                    toClient1.writeUTF(message2);
-
-
-
-                    Platform.runLater(() -> {
-                        taLog.appendText("Message received from client1: " +
-                                message1 + '\n');
-                        taLog.appendText("Message received from client2: " + message2 + '\n');
-                    });
+                // Receive Message from the client
+                String message;
+                while ((message = fromClient.readUTF().trim()) != null) {
+                    if(message.startsWith("/quit")) {
+                        broadcast(nickname + " left the chat!\n");
+                        shutdown();
+                    } else {
+                        broadcast(nickname + ": " + message + "\n");
+                        taLog.appendText("Message received from client " + nickname + ": " + message + "\n");
+                    }
                 }
             }
             catch(IOException ex) {
                 ex.printStackTrace();
+                try {
+                    shutdown();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
         }
-        private void sendMessage(DataOutputStream out, String sms)
-                throws IOException {
-            out.writeUTF(sms);
+
+        public void shutdown() throws IOException {
+            fromClient.close();
+            toClient.close();
+            if (!client.isClosed()) {
+                client.close();
+            }
         }
 
-
+        public void sendMessage(String message) throws IOException {
+            toClient.writeUTF(message);
+        }
     }
     public static void main(String[] args) {
         launch(args);
     }
-
-
 }

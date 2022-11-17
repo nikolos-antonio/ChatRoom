@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="chatServer" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="chatServer" />
+    <module name="ChatRoom" />
+    <selectedOptions>
+      <option name="environmentVariables" visible="false" />
+    </selectedOptions>
+    <!--Change module path to your javafx-sdk location-->
+    <option name="VM_PARAMETERS" value="--module-path D:\javafx-sdk-19\lib --add-modules javafx.controls,javafx.fxml --add-exports javafx.graphics/com.sun.javafx.sg.prism=ALL-UNNAMED" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
