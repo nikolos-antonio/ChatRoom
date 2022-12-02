@@ -18,7 +18,6 @@ public class chatClient extends Application {
     private DataInputStream fromServer;
     private String hostname;
     private Socket client;
-    private boolean done;
 
     public chatClient(String hostname) {
         this.hostname = hostname;
@@ -93,6 +92,7 @@ public class chatClient extends Application {
                 }
             } catch (IOException ex) {
                 ta.appendText(ex.toString() + '\n');
+                System.out.println(ex.toString() + '\n');
                 shutdown();
             }
         }).start();
@@ -100,15 +100,20 @@ public class chatClient extends Application {
 
 
     public void shutdown() {
-        done = true;
         try {
-            fromServer.close();
-            toServer.close();
-            if (!client.isClosed()) {
+            if (fromServer != null) {
+                fromServer.close();
+            }
+
+            if (toServer != null) {
+                toServer.close();
+            }
+
+            if (client != null) {
                 client.close();
             }
         } catch (IOException e) {
-
+            System.out.println(e.toString() + '\n');
         }
     }
 

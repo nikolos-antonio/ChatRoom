@@ -7,6 +7,7 @@ import javafx.stage.Stage;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -70,7 +71,7 @@ public class chatServer extends Application {
     public void broadcast(String message)
             throws IOException {
         for (HandleSession ch : connections) {
-            if (ch != null) {
+            if (ch != null && !ch.client.isClosed()) {
                 ch.sendMessage(message);
             }
         }
@@ -93,9 +94,11 @@ public class chatServer extends Application {
         private DataInputStream fromClient;
         private DataOutputStream toClient;
         private String nickname;
+        private boolean done;
 
         public HandleSession(Socket client) {
             this.client = client;
+            done = false;
         }
         public void run() {
             try {
@@ -109,30 +112,36 @@ public class chatServer extends Application {
                 broadcast(nickname + " joined the chat!\n");
 
                 // Receive Message from the client
-                String message;
-                while ((message = fromClient.readUTF().trim()) != null) {
-                    if(message.startsWith("/quit")) {
-                        broadcast(nickname + " left the chat!\n");
-                        shutdown();
-                    } else {
-                        broadcast(nickname + ": " + message + "\n");
-                        taLog.appendText("Message received from client " + nickname + ": " + message + "\n");
-                    }
-                }
-            }
-            catch(IOException ex) {
-                ex.printStackTrace();
+                String message = null;
                 try {
+                    while (!done) {
+                        if (fromClient.available() >= 0) {
+                            message = (String) fromClient.readUTF().trim();
+                        }
+
+                        if (message.startsWith("/quit")) {
+                            shutdown();
+                        } else {
+                            broadcast(nickname + ": " + message + "\n");
+                            taLog.appendText("Message received from client " + nickname + ": " + message + "\n");
+                        }
+                    }
+                } catch (EOFException e) {
+                    broadcast(nickname + " left the chat!\n");
                     shutdown();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
                 }
+
+            } catch(IOException ex) {
+                ex.printStackTrace();
             }
+
         }
 
         public void shutdown() throws IOException {
+            done = true;
             fromClient.close();
             toClient.close();
+
             if (!client.isClosed()) {
                 client.close();
             }
